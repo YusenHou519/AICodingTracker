@@ -1,23 +1,84 @@
 {
   "name": "aicodingtracker",
-  "displayName": "AICodingTracker",
-  "description": "",
+  "displayName": "AI Coding Tracker",
+  "description": "Monitor coding behavior and detect AI-assisted programming",
   "version": "0.0.1",
+  "publisher": "aicodingtracker",
   "engines": {
     "vscode": "^1.54.0"
   },
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "keywords": [
+    "ai",
+    "coding",
+    "monitor",
+    "tracker",
+    "education"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "aicodingtracker.helloWorld",
-        "title": "Hello World"
+        "command": "aicodingtracker.selectMonitorFolder",
+        "title": "Select Monitor Folder",
+        "category": "AI Coding Tracker"
+      },
+      {
+        "command": "aicodingtracker.showStatus",
+        "title": "Show Status",
+        "category": "AI Coding Tracker"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "AI Coding Tracker",
+      "properties": {
+        "aiCodingTracker.monitoredFolder": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the monitored folder"
+        },
+        "aiCodingTracker.serverEndpoint": {
+          "type": "string",
+          "default": "",
+          "description": "Server API endpoint for data reporting"
+        },
+        "aiCodingTracker.apiToken": {
+          "type": "string",
+          "default": "",
+          "description": "API authentication token"
+        },
+        "aiCodingTracker.reportInterval": {
+          "type": "number",
+          "default": 300000,
+          "description": "Report interval in milliseconds (default: 5 minutes)"
+        },
+        "aiCodingTracker.alertThreshold": {
+          "type": "number",
+          "default": 50,
+          "description": "Alert threshold for line count increase"
+        },
+        "aiCodingTracker.enableRealTimeAlert": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable real-time alerts"
+        },
+        "aiCodingTracker.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable/disable the extension"
+        },
+        "aiCodingTracker.aiScanInterval": {
+          "type": "number",
+          "default": 60000,
+          "description": "AI plugin scan interval in milliseconds (default: 5 minutes)"
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",

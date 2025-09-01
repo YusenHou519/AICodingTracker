@@ -1,51 +1,130 @@
-# aicodingtracker README
+# AI Coding Tracker
 
-This is the README for your extension "aicodingtracker". After writing up a brief description, we recommend including the following sections.
+A VS Code extension that monitors coding behavior and detects AI-assisted programming activities. Designed for educational environments to ensure coding integrity.
+
+**Current Version**: v0.0.3 | **Status**: Production Ready for Monitoring & Detection
 
 ## Features
 
-Describe specific features of your extension including screenshots of your extension in action. Image paths are relative to this README file.
+### 🔍 AI Extension Detection
+- Automatically scans and detects installed AI coding assistants every 5 minutes
+- Supports detection of 25+ popular AI tools including:
+  - **GitHub Copilot Series**: GitHub Copilot, Copilot Chat, Copilot Labs
+  - **Claude Series**: Cline (Claude Dev), Claude 3 VSCode, Anthropic Claude
+  - **Mainstream AI Tools**: Cursor AI Assistant, Tabnine, Codeium, Continue
+  - **Cloud Provider AI**: Amazon Q Developer, AWS CodeWhisperer, Google Duet AI
+  - **Emerging AI Tools**: Windsurf Cascade, OpenAI VSCode, Meta Code Llama
+  - **Other AI Assistants**: Sourcegraph Cody, IntelliCode, Kite AI, BlackBox AI
+  - **And more**: DeepCode AI, Cohere AI, StableCode, AI Toolkit
 
-For example if there is an image subfolder under your extension project workspace:
+### 📁 Selective Folder Monitoring
+- Choose specific folders to monitor on first run
+- Focuses monitoring on designated work directories
+- Avoids tracking unnecessary files
 
-\!\[feature X\]\(images/feature-x.png\)
+### 💾 Automatic Save Management
+- Automatically enables VS Code's AutoSave feature
+- Forces 3-second save intervals for consistent monitoring
+- Ensures all code changes are captured
 
-> Tip: Many popular extensions utilize animations. This is an excellent way to show off your extension! We recommend short, focused animations that are easy to follow.
+### 📊 Real-time Status Display
+- Status bar indicator showing monitoring status
+- Quick access to extension information
+- Visual feedback on detected AI extensions
 
-## Requirements
+## Installation
 
-If you have any requirements or dependencies, add a section describing those and how to install and configure them.
+1. Install the extension through VS Code Extension Marketplace (when published)
+2. Or install from VSIX file: `code --install-extension aicodingtracker-0.0.3.vsix`
+
+## Usage
+
+1. **First Run Setup**: The extension will automatically prompt you to select a folder to monitor
+2. **Status Monitoring**: Check the status bar for real-time monitoring information
+3. **Manual Commands**: Use the Command Palette (`Cmd+Shift+P`) to access:
+   - `AI Coding Tracker: Select Monitor Folder` - Choose/change monitored folder
+   - `AI Coding Tracker: Show Status` - Display detailed status information
 
 ## Extension Settings
 
-Include if your extension adds any VS Code settings through the `contributes.configuration` extension point.
-
-For example:
-
 This extension contributes the following settings:
 
-* `myExtension.enable`: Enable/disable this extension.
-* `myExtension.thing`: Set to `blah` to do something.
+* `aiCodingTracker.enabled`: Enable/disable the extension
+* `aiCodingTracker.monitoredFolder`: Path to the monitored folder
+* `aiCodingTracker.serverEndpoint`: Server API endpoint for data reporting
+* `aiCodingTracker.apiToken`: API authentication token
+* `aiCodingTracker.reportInterval`: Report interval in milliseconds (default: 5 minutes)
+* `aiCodingTracker.alertThreshold`: Alert threshold for line count increase
+* `aiCodingTracker.enableRealTimeAlert`: Enable real-time alerts
+* `aiCodingTracker.aiScanInterval`: AI plugin scan interval in milliseconds (default: 300000ms/5 minutes)
+
+## Current Status
+
+This extension is **production-ready** for monitoring and detection features. Currently implemented features:
+
+### ✅ Fully Implemented (v0.0.3)
+- **AI Extension Detection**: 25+ AI tools, automatic 5-minute scanning
+- **Folder Selection and Configuration**: Interactive setup and persistent storage
+- **AutoSave Management**: Forced 3-second intervals with workspace configuration
+- **Status Bar Integration**: Real-time monitoring status and quick access
+- **Code Change Monitoring**: Complete real-time tracking with snapshot storage
+- **Anomaly Detection**: Advanced algorithms for suspicious activity detection
+- **Alert System**: Multi-level warnings with detailed change analysis
+- **Data Persistence**: Comprehensive snapshot management with memory optimization
+
+### 🚧 In Development
+- **Server Reporting (Phase 3)**: HTTP API integration and data upload
 
 ## Known Issues
 
-Calling out known issues can help limit users opening duplicate issues against your extension.
+- **Server reporting functionality pending** (Phase 3 - HTTP API integration)
+- **Network connectivity detection** not yet implemented for offline scenarios
+- **Batch data upload mechanism** requires development for efficiency
+- **Advanced machine learning algorithms** could enhance detection accuracy further
 
-## Release Notes
+### Performance Notes
+- Extension is optimized for codebases up to 10,000 files
+- Memory usage optimized with automatic cleanup and content truncation
+- Snapshot storage limited to 7-day retention for performance
 
-Users appreciate release notes as you update your extension.
+## Development Roadmap
 
-### 1.0.0
+### Phase 1: Basic Framework ✅ COMPLETED (v0.0.1)
+- [x] Extension framework setup
+- [x] AI extension detection (initial 9 tools)
+- [x] Folder selection and configuration
+- [x] AutoSave enforcement
+- [x] Status bar integration
+- [x] Command palette integration
 
-Initial release of ...
+### Phase 2: Monitoring & Analysis ✅ COMPLETED (v0.0.2)
+- [x] Code change monitoring with real-time tracking
+- [x] Anomaly detection algorithms (rapid increase, content replacement)
+- [x] Version jump analysis with timestamp tracking
+- [x] Local alert system with severity levels
+- [x] Snapshot storage system with memory optimization
+- [x] Session management and file organization
 
-### 1.0.1
+### Phase 2.5: AI Detection Enhancement ✅ COMPLETED (v0.0.3)
+- [x] Extended AI plugin blacklist (25+ tools including Cline, Cursor, Amazon Q)
+- [x] Automatic timer-based detection (configurable 5-minute intervals)
+- [x] Removed manual scan commands for streamlined UX
+- [x] Enhanced configuration validation
+- [x] Improved memory management
 
-Fixed issue #.
+### Phase 3: Data Reporting 🚧 IN PROGRESS (v0.1.0)
+- [ ] HTTP API integration with authentication
+- [ ] Batch upload mechanism with compression
+- [ ] Offline caching with retry logic
+- [ ] Network status detection and error handling
+- [ ] Data encryption for secure transmission
 
-### 1.1.0
-
-Added features X, Y, and Z.
+### Phase 4: Advanced Features 📋 PLANNED (v0.2.0)
+- [ ] Machine learning-based anomaly detection
+- [ ] Code complexity analysis algorithms
+- [ ] Programming pattern recognition
+- [ ] Advanced reporting dashboard
+- [ ] Multi-workspace support
 
 ---
 
