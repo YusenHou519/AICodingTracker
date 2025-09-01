@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as crypto from 'crypto';
+import * as os from 'os';
 
 // AI插件黑名单 - 扩展版本 (20+个主流AI工具)
 const AI_EXTENSIONS = [
@@ -39,6 +40,182 @@ const AI_EXTENSIONS = [
 	'ai-toolkit.ai-toolkit',            // AI Toolkit
 	'blackbox.blackbox-ai'              // BlackBox AI
 ];
+
+// 系统AI插件检测相关接口
+interface AIPluginReport {
+	installedPlugins: string[];     // 所有已安装的AI插件
+	totalCount: number;             // 总AI插件数量
+	riskLevel: 'low' | 'medium' | 'high'; // 风险等级评估
+	detectionMethod: 'filesystem';   // 检测方法标识
+	operatingSystem: string;        // 操作系统信息
+	pluginDirectory: string;        // 插件目录路径
+}
+
+// 插件package.json类型定义
+interface PluginPackageJson {
+	name?: string;
+	displayName?: string;
+	description?: string;
+	version?: string;
+	publisher?: string;
+	[key: string]: any;
+}
+
+// 系统插件检测器
+class SystemPluginDetector {
+	private readonly AI_PLUGIN_KEYWORDS = [
+		'copilot', 'claude', 'gpt', 'openai', 'tabnine', 
+		'codeium', 'cursor', 'ai-coding', 'ai-assistant', 'code-completion',
+		'neural', 'machine-learning', 'llm', 'chatgpt'
+	];
+
+	private readonly PLUGIN_DIRECTORIES = {
+		'win32': path.join(os.homedir(), '.vscode', 'extensions'),     // Windows
+		'darwin': path.join(os.homedir(), '.vscode', 'extensions'),   // macOS
+		'linux': path.join(os.homedir(), '.vscode', 'extensions')     // Linux
+	};
+
+	detectOperatingSystem(): 'windows' | 'macos' | 'linux' | 'unknown' {
+		const platform = os.platform();
+		switch (platform) {
+			case 'win32':
+				return 'windows';
+			case 'darwin':
+				return 'macos';
+			case 'linux':
+				return 'linux';
+			default:
+				return 'unknown';
+		}
+	}
+
+	getPluginDirectory(): string {
+		const platform = os.platform();
+		return this.PLUGIN_DIRECTORIES[platform as keyof typeof this.PLUGIN_DIRECTORIES] || 
+			   path.join(os.homedir(), '.vscode', 'extensions');
+	}
+
+	async scanInstalledPlugins(includeKeywordDetection: boolean = true): Promise<string[]> {
+		try {
+			const pluginDir = this.getPluginDirectory();
+			console.log(`扫描插件目录: ${pluginDir}`);
+
+			// 异步检查目录是否存在
+			try {
+				await fs.promises.access(pluginDir, fs.constants.F_OK);
+			} catch {
+				console.warn(`插件目录不存在: ${pluginDir}`);
+				return [];
+			}
+
+			const entries = await fs.promises.readdir(pluginDir);
+			const installedAIPlugins: string[] = [];
+
+			for (const entry of entries) {
+				const pluginPath = path.join(pluginDir, entry);
+				const packageJsonPath = path.join(pluginPath, 'package.json');
+				
+				try {
+					// 检查是否为目录
+					const stat = await fs.promises.stat(pluginPath);
+					if (!stat.isDirectory()) {
+						continue;
+					}
+
+					// 异步检查package.json是否存在
+					try {
+						await fs.promises.access(packageJsonPath, fs.constants.F_OK);
+					} catch {
+						continue; // package.json不存在，跳过
+					}
+
+					const packageData = await fs.promises.readFile(packageJsonPath, 'utf8');
+					const pkg = JSON.parse(packageData);
+					
+					if (this.isAIPlugin(pkg, entry, includeKeywordDetection)) {
+						// 优先使用package.json中的name，fallback到目录名
+						const pluginId = pkg.name || entry;
+						installedAIPlugins.push(pluginId);
+						console.log(`发现AI插件: ${pluginId} (目录: ${entry})`);
+					}
+				} catch (error) {
+					// 细化错误处理
+					if (error instanceof SyntaxError) {
+						console.warn(`插件 ${entry} 的package.json格式无效`);
+					} else if (error instanceof Error && error.message.includes('ENOENT')) {
+						console.debug(`插件 ${entry} 缺少必要文件`);
+					} else {
+						console.warn(`扫描插件 ${entry} 时发生错误:`, error);
+					}
+					continue;
+				}
+			}
+			
+			console.log(`文件系统扫描完成，发现 ${installedAIPlugins.length} 个AI插件`);
+			return installedAIPlugins;
+		} catch (error) {
+			console.error('文件系统扫描失败:', error);
+			return [];
+		}
+	}
+
+	private isAIPlugin(packageJson: PluginPackageJson, directoryName: string, enableKeywordDetection: boolean = true): boolean {
+		// 1. 优先检查已知AI插件ID
+		if (packageJson.name && AI_EXTENSIONS.includes(packageJson.name)) {
+			return true;
+		}
+		
+		// 2. 安全的目录名匹配检查（修复Bug #1）
+		// VSCode插件目录格式通常是: publisher.name-version
+		// 需要精确匹配，避免误判
+		const isDirectoryMatch = AI_EXTENSIONS.some(ext => {
+			// 精确匹配插件ID
+			if (directoryName === ext) {
+				return true;
+			}
+			// 匹配带版本号的目录名：publisher.name-x.x.x
+			const versionPattern = new RegExp(`^${ext.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}-\\d+\\.\\d+\\.\\d+`);
+			return versionPattern.test(directoryName);
+		});
+		
+		if (isDirectoryMatch) {
+			return true;
+		}
+		
+		// 3. 关键词检测（可选）
+		if (enableKeywordDetection) {
+			const text = `${packageJson.name || ''} ${packageJson.displayName || ''} ${packageJson.description || ''}`.toLowerCase();
+			// 移除目录名检测，避免false positive
+			return this.AI_PLUGIN_KEYWORDS.some(keyword => text.includes(keyword));
+		}
+		
+		return false;
+	}
+
+	generateDetectionReport(installedPlugins: string[]): AIPluginReport {
+		const osType = this.detectOperatingSystem();
+		const pluginDir = this.getPluginDirectory();
+		
+		return {
+			installedPlugins,
+			totalCount: installedPlugins.length,
+			riskLevel: this.calculateRiskLevel(installedPlugins.length),
+			detectionMethod: 'filesystem',
+			operatingSystem: `${osType} (${os.platform()})`,
+			pluginDirectory: pluginDir
+		};
+	}
+
+	private calculateRiskLevel(count: number): 'low' | 'medium' | 'high' {
+		if (count === 0) {
+			return 'low';
+		}
+		if (count <= 2) {
+			return 'medium';
+		}
+		return 'high';
+	}
+}
 
 // 快照数据结构
 interface CodeSnapshot {
@@ -219,14 +396,23 @@ class SnapshotManager {
 		return snapshots.length > 0 ? snapshots[snapshots.length - 1] : null;
 	}
 
-	// 新增：清理内存中过多的快照
+	// 修复Bug #3: 改进内存清理策略
 	private cleanupMemoryIfNeeded(): void {
 		if (this.snapshots.size > this.maxFilesInMemory) {
-			// 删除最旧的文件记录（基于Map的插入顺序）
-			const oldestKey = this.snapshots.keys().next().value;
-			if (oldestKey) {
-				this.snapshots.delete(oldestKey);
-				console.log(`Memory cleaned: Removed oldest file snapshots for ${oldestKey}`);
+			// 找到快照数量最少的文件进行清理（而不是最旧的）
+			let minSnapshotsKey = '';
+			let minSnapshotsCount = Infinity;
+			
+			for (const [key, snapshots] of this.snapshots.entries()) {
+				if (snapshots.length < minSnapshotsCount) {
+					minSnapshotsCount = snapshots.length;
+					minSnapshotsKey = key;
+				}
+			}
+			
+			if (minSnapshotsKey) {
+				this.snapshots.delete(minSnapshotsKey);
+				console.log(`Memory cleaned: Removed snapshots for ${minSnapshotsKey} (${minSnapshotsCount} snapshots)`);
 			}
 		}
 	}
@@ -236,14 +422,28 @@ class SnapshotManager {
 			const cutoffDate = new Date();
 			cutoffDate.setDate(cutoffDate.getDate() - this.maxStorageDays);
 
+			// 修复Bug #4: 检查目录是否存在
+			try {
+				await fs.promises.access(this.snapshotDir, fs.constants.F_OK);
+			} catch {
+				console.log('Snapshot directory does not exist yet, skipping cleanup');
+				return;
+			}
+
 			const entries = await fs.promises.readdir(this.snapshotDir);
 			for (const entry of entries) {
 				const entryPath = path.join(this.snapshotDir, entry);
-				const stats = await fs.promises.stat(entryPath);
 				
-				if (stats.isDirectory() && stats.mtime < cutoffDate) {
-					await fs.promises.rm(entryPath, { recursive: true, force: true });
-					console.log(`Cleaned up old snapshot directory: ${entry}`);
+				try {
+					const stats = await fs.promises.stat(entryPath);
+					
+					if (stats.isDirectory() && stats.mtime < cutoffDate) {
+						await fs.promises.rm(entryPath, { recursive: true, force: true });
+						console.log(`Cleaned up old snapshot directory: ${entry}`);
+					}
+				} catch (error) {
+					console.warn(`Failed to process entry ${entry}:`, error);
+					continue;
 				}
 			}
 		} catch (error) {
@@ -278,8 +478,15 @@ class AICodingTracker {
 	private snapshotManager: SnapshotManager;
 	private disposables: vscode.Disposable[] = [];
 	
-	// 定时AI插件检测
+	// AI插件检测系统
 	private aiScanTimer: NodeJS.Timeout | null = null;
+	private systemPluginDetector: SystemPluginDetector;
+	private latestAIReport: AIPluginReport | null = null;
+	private lastWarningTimestamp: number = 0;
+	private readonly WARNING_THROTTLE_MS = 60000; // 1分钟内最多一次警告
+	
+	// 修复Bug #2: 添加文档保存处理的并发控制
+	private documentSaveQueue: Map<string, Promise<void>> = new Map();
 
 	constructor(private context: vscode.ExtensionContext) {
 		this.config = vscode.workspace.getConfiguration('aiCodingTracker');
@@ -289,6 +496,9 @@ class AICodingTracker {
 		
 		// 初始化快照管理器
 		this.snapshotManager = new SnapshotManager(context);
+		
+		// 初始化系统插件检测器
+		this.systemPluginDetector = new SystemPluginDetector();
 		
 		this.updateStatusBar();
 	}
@@ -330,9 +540,11 @@ class AICodingTracker {
 
 	// 新增：验证配置
 	private validateConfig(): void {
-		const reportInterval = this.config.get<number>('reportInterval', 300000);
+		const reportInterval = this.config.get<number>('reportInterval', 60000);
 		const alertThreshold = this.config.get<number>('alertThreshold', 50);
 		const aiScanInterval = this.config.get<number>('aiScanInterval', 300000);
+		const timeThreshold = this.config.get<number>('timeThreshold', 30000);
+		const characterThreshold = this.config.get<number>('characterThreshold', 500);
 
 		if (reportInterval < 60000 || reportInterval > 3600000) { // 1分钟到1小时
 			console.warn(`Invalid reportInterval: ${reportInterval}. Using default.`);
@@ -348,6 +560,16 @@ class AICodingTracker {
 			console.warn(`Invalid aiScanInterval: ${aiScanInterval}. Using default.`);
 			vscode.window.showWarningMessage('aiCodingTracker.aiScanInterval 配置无效，建议设置在 60000 到 3600000 之间。');
 		}
+
+		if (timeThreshold < 5000 || timeThreshold > 300000) { // 5秒到5分钟
+			console.warn(`Invalid timeThreshold: ${timeThreshold}. Using default.`);
+			vscode.window.showWarningMessage('aiCodingTracker.timeThreshold 配置无效，建议设置在 5000 到 300000 之间。');
+		}
+
+		if (characterThreshold < 100 || characterThreshold > 10000) { // 100到10000字符
+			console.warn(`Invalid characterThreshold: ${characterThreshold}. Using default.`);
+			vscode.window.showWarningMessage('aiCodingTracker.characterThreshold 配置无效，建议设置在 100 到 10000 之间。');
+		}
 	}
 
 	// 定时器管理方法
@@ -360,6 +582,13 @@ class AICodingTracker {
 
 		// 从配置中读取扫描间隔
 		const scanInterval = this.config.get<number>('aiScanInterval', 300000); // 默认5分钟
+		const enableFileSystemScan = this.config.get<boolean>('enableFileSystemScan', true);
+
+		// 检查是否启用文件系统扫描
+		if (!enableFileSystemScan) {
+			console.log('⚠️ 文件系统扫描已禁用，跳过AI插件检测');
+			return;
+		}
 
 		this.aiScanTimer = setInterval(async () => {
 			try {
@@ -368,6 +597,11 @@ class AICodingTracker {
 				this.updateStatusBar();
 			} catch (error) {
 				console.error('定时AI插件扫描失败:', error);
+				// 修复Bug #6: 在严重错误时停止定时器，防止状态不一致
+				if (error instanceof Error && error.message.includes('FATAL')) {
+					console.error('Fatal error detected, stopping AI scan timer');
+					this.stopAIScanTimer();
+				}
 			}
 		}, scanInterval);
 		
@@ -382,27 +616,52 @@ class AICodingTracker {
 		}
 	}
 
-	// AI插件检测功能
+	// AI插件检测功能（文件系统级扫描）
 	async scanAIExtensions(): Promise<string[]> {
-		const allExtensions = vscode.extensions.all;
-		const foundAIExtensions: string[] = [];
-
-		for (const extension of allExtensions) {
-			if (AI_EXTENSIONS.includes(extension.id)) {
-				foundAIExtensions.push(extension.id);
-				console.log(`Detected AI Extension: ${extension.id}`);
+		try {
+			// 修复Bug #5: 移除重复的配置检查（在startAIScanTimer中已检查）
+			console.log('🔍 开始文件系统级AI插件扫描...');
+			
+			// 检测操作系统
+			const osType = this.systemPluginDetector.detectOperatingSystem();
+			const pluginDir = this.systemPluginDetector.getPluginDirectory();
+			console.log(`操作系统: ${osType}, 插件目录: ${pluginDir}`);
+			
+			// 扫描已安装的AI插件
+			const includeKeywordDetection = this.config.get<boolean>('includeKeywordDetection', true);
+			const installedPlugins = await this.systemPluginDetector.scanInstalledPlugins(includeKeywordDetection);
+			
+			// 生成检测报告
+			this.latestAIReport = this.systemPluginDetector.generateDetectionReport(installedPlugins);
+			
+			// 更新检测到的AI插件列表
+			this.detectedAIExtensions = installedPlugins;
+			
+			// 显示检测结果（防止频繁警告）
+			if (installedPlugins.length > 0) {
+				const riskLevel = this.latestAIReport.riskLevel;
+				const riskEmoji = riskLevel === 'high' ? '🔴' : riskLevel === 'medium' ? '🟡' : '🔵';
+				
+				// 检查是否需要显示警告（防止频繁弹窗）
+				const now = Date.now();
+				const shouldShowWarning = now - this.lastWarningTimestamp > this.WARNING_THROTTLE_MS;
+				
+				if (shouldShowWarning || riskLevel === 'high') {
+					this.lastWarningTimestamp = now;
+					vscode.window.showWarningMessage(
+						`${riskEmoji} 检测到 ${installedPlugins.length} 个已安装的AI编程插件 (${riskLevel} 风险级别): ${installedPlugins.slice(0, 3).join(', ')}${installedPlugins.length > 3 ? '...' : ''}`
+					);
+				}
+			} else {
+				console.log('✅ 未检测到AI插件');
 			}
-		}
 
-		this.detectedAIExtensions = foundAIExtensions;
-		
-		if (foundAIExtensions.length > 0) {
-			vscode.window.showWarningMessage(
-				`检测到 ${foundAIExtensions.length} 个AI编程插件: ${foundAIExtensions.join(', ')}`
-			);
+			return installedPlugins;
+		} catch (error) {
+			console.error('AI插件扫描失败:', error);
+			vscode.window.showErrorMessage(`AI插件扫描失败: ${error instanceof Error ? error.message : '未知错误'}`);
+			return [];
 		}
-
-		return foundAIExtensions;
 	}
 
 	// 文件夹选择配置功能
@@ -483,7 +742,7 @@ class AICodingTracker {
 		this.disposables.push(saveListener);
 	}
 
-	// 文档保存事件处理
+	// 文档保存事件处理（修复Bug #2: 竞态条件）
 	private async onDocumentSaved(document: vscode.TextDocument): Promise<void> {
 		try {
 			// 验证必要条件
@@ -497,29 +756,50 @@ class AICodingTracker {
 				return;
 			}
 
-			console.log(`Document saved: ${document.uri.fsPath}`);
+			const filePath = document.uri.fsPath;
+			const relativePath = this.snapshotManager.getRelativePath(filePath, this.monitoredFolder);
 			
-			// 先获取相对路径和之前的快照
-			const relativePath = this.snapshotManager.getRelativePath(document.uri.fsPath, this.monitoredFolder);
-			const previousSnapshot = this.snapshotManager.getPreviousSnapshot(relativePath);
-			
-			// 然后创建新快照
-			const snapshot = await this.snapshotManager.createSnapshot(document, this.monitoredFolder);
-			
-			// 如果有之前的快照，进行变化分析
-			if (previousSnapshot) {
-				this.analyzeCodeChange(previousSnapshot, snapshot);
-			} else {
-				console.log(`First snapshot for file: ${relativePath}`);
+			// 防止并发处理同一文件的保存事件
+			if (this.documentSaveQueue.has(relativePath)) {
+				console.log(`Document save already in progress for: ${relativePath}`);
+				return;
 			}
+
+			console.log(`Document saved: ${filePath}`);
 			
-			console.log(`Snapshot created: ${snapshot.id}`);
+			// 创建处理Promise并加入队列
+			const processingPromise = this.processDocumentSave(document, relativePath);
+			this.documentSaveQueue.set(relativePath, processingPromise);
+			
+			try {
+				await processingPromise;
+			} finally {
+				// 确保从队列中移除
+				this.documentSaveQueue.delete(relativePath);
+			}
 			
 		} catch (error) {
 			console.error('Error handling document save:', error);
 			// 通知用户但不中断工作流程
 			vscode.window.showErrorMessage(`监控系统错误: ${error instanceof Error ? error.message : '未知错误'}`);
 		}
+	}
+	
+	private async processDocumentSave(document: vscode.TextDocument, relativePath: string): Promise<void> {
+		// 获取之前的快照
+		const previousSnapshot = this.snapshotManager.getPreviousSnapshot(relativePath);
+		
+		// 创建新快照
+		const snapshot = await this.snapshotManager.createSnapshot(document, this.monitoredFolder);
+		
+		// 如果有之前的快照，进行变化分析
+		if (previousSnapshot) {
+			this.analyzeCodeChange(previousSnapshot, snapshot);
+		} else {
+			console.log(`First snapshot for file: ${relativePath}`);
+		}
+		
+		console.log(`Snapshot created: ${snapshot.id}`);
 	}
 
 	// 代码变化分析
@@ -546,9 +826,9 @@ class AICodingTracker {
 				- Char diff: ${charDiff}
 				- File: ${current.relativePath}`);
 			
-			// 基础异常检测
-			if (this.isChangesSuspicious(previous, current)) {
-				this.handleSuspiciousChange(previous, current);
+			// 基础异常检测 - 传递已计算的值避免重复计算
+			if (this.isChangesSuspicious(previous, current, timeDiff, lineDiff, charDiff)) {
+				this.handleSuspiciousChange(previous, current, timeDiff, lineDiff, charDiff);
 			}
 		} catch (error) {
 			console.error('Error in code change analysis:', error);
@@ -556,18 +836,19 @@ class AICodingTracker {
 	}
 
 	// 基础异常检测
-	private isChangesSuspicious(previous: CodeSnapshot, current: CodeSnapshot): boolean {
-		const timeDiff = current.timestamp.getTime() - previous.timestamp.getTime();
-		const lineDiff = current.lineCount - previous.lineCount;
-		
+	private isChangesSuspicious(previous: CodeSnapshot, current: CodeSnapshot, timeDiff: number, lineDiff: number, charDiff: number): boolean {
+		// 从配置中读取阈值
+		const alertThreshold = this.config.get<number>('alertThreshold', 50);
+		const timeThreshold = this.config.get<number>('timeThreshold', 30000);
+		const characterThreshold = this.config.get<number>('characterThreshold', 500);
+
 		// 检测大量代码突增
-		if (lineDiff > 50 && timeDiff < 30000) {
+		if (lineDiff > alertThreshold && timeDiff < timeThreshold) {
 			return true;
 		}
 		
 		// 检测内容完全替换（可能是粘贴）
-		if (previous.hash !== current.hash && 
-			Math.abs(current.characterCount - previous.characterCount) > 500) {
+		if (previous.hash !== current.hash && charDiff > characterThreshold) {
 			return true;
 		}
 		
@@ -575,15 +856,23 @@ class AICodingTracker {
 	}
 
 	// 处理可疑变化
-	private handleSuspiciousChange(previous: CodeSnapshot, current: CodeSnapshot): void {
-		const timeDiff = current.timestamp.getTime() - previous.timestamp.getTime();
-		const lineDiff = current.lineCount - previous.lineCount;
+	private handleSuspiciousChange(previous: CodeSnapshot, current: CodeSnapshot, timeDiff: number, lineDiff: number, charDiff: number): void {
+		// 从配置中读取阈值
+		const alertThreshold = this.config.get<number>('alertThreshold', 50);
+		const timeThreshold = this.config.get<number>('timeThreshold', 30000);
+		const characterThreshold = this.config.get<number>('characterThreshold', 500);
 		
 		let alertType = 'unknown';
 		let severity: 'low' | 'medium' | 'high' = 'medium';
 		
-		if (lineDiff > 50 && timeDiff < 30000) {
+		// 检测大量代码突增
+		if (lineDiff > alertThreshold && timeDiff < timeThreshold) {
 			alertType = 'rapid_code_increase';
+			severity = 'high';
+		}
+		// 检测内容完全替换（可能是粘贴大段代码）
+		else if (previous.hash !== current.hash && charDiff > characterThreshold) {
+			alertType = 'content_replacement';
 			severity = 'high';
 		}
 		
@@ -595,8 +884,14 @@ class AICodingTracker {
 			Time: ${timeDiff}ms`);
 		
 		// 显示警告给用户
+		const changeDescription = alertType === 'rapid_code_increase' 
+			? `${lineDiff} 行, ${timeDiff}ms`
+			: alertType === 'content_replacement'
+			? `${charDiff} 字符替换`
+			: `${lineDiff} 行, ${timeDiff}ms`;
+
 		vscode.window.showWarningMessage(
-			`检测到可疑代码变化: ${current.relativePath} (${lineDiff} 行, ${timeDiff}ms)`,
+			`检测到可疑代码变化: ${current.relativePath} (${changeDescription})`,
 			'查看详情'
 		).then(selection => {
 			if (selection === '查看详情') {
@@ -633,8 +928,34 @@ class AICodingTracker {
 		const monitorStatus = this.isMonitoring ? '监控中' : '未监控';
 		const snapshotStats = this.snapshotManager.getSnapshotStats();
 		
-		this.statusBarItem.text = `$(shield) AI Tracker: ${aiCount} AI插件 | ${monitorStatus}`;
-		this.statusBarItem.tooltip = `检测到 ${aiCount} 个AI插件\n监控状态: ${monitorStatus}\n监控文件夹: ${this.monitoredFolder || '未设置'}\n快照统计: ${snapshotStats.totalSnapshots} 个快照, ${snapshotStats.totalFiles} 个文件`;
+		// 根据风险等级选择图标和颜色
+		let statusIcon = '$(shield)';
+		if (this.latestAIReport) {
+			switch (this.latestAIReport.riskLevel) {
+				case 'high':
+					statusIcon = '$(alert)';
+					break;
+				case 'medium':
+					statusIcon = '$(warning)';
+					break;
+				case 'low':
+					statusIcon = '$(check)';
+					break;
+			}
+		}
+		
+		this.statusBarItem.text = `${statusIcon} AI Tracker: ${aiCount} 已安装 | ${monitorStatus}`;
+		
+		const osInfo = this.latestAIReport ? this.latestAIReport.operatingSystem : '检测中...';
+		const riskLevel = this.latestAIReport ? this.latestAIReport.riskLevel : 'unknown';
+		
+		this.statusBarItem.tooltip = `
+文件系统检测: ${aiCount} 个已安装AI插件
+风险等级: ${riskLevel}
+操作系统: ${osInfo}
+监控状态: ${monitorStatus}
+监控文件夹: ${this.monitoredFolder || '未设置'}
+快照统计: ${snapshotStats.totalSnapshots} 个快照, ${snapshotStats.totalFiles} 个文件`.trim();
 	}
 
 	// 显示状态信息
@@ -646,11 +967,23 @@ class AICodingTracker {
 		const snapshotStats = this.snapshotManager.getSnapshotStats();
 		const sessionId = this.snapshotManager.getSessionId();
 		
-		const statusMessage = `
-AI Coding Tracker 状态:
+		// 文件系统检测详细信息
+		const fsDetectionInfo = this.latestAIReport ? `
+文件系统检测报告:
+- 操作系统: ${this.latestAIReport.operatingSystem}
+- 插件目录: ${this.latestAIReport.pluginDirectory}
+- 检测方法: ${this.latestAIReport.detectionMethod}
+- 风险等级: ${this.latestAIReport.riskLevel}
+- 最后扫描: ${new Date().toLocaleString()}` : `
+文件系统检测报告:
+- 状态: 初始化中...`;
 
-检测到的AI插件 (${this.detectedAIExtensions.length}):
+		const statusMessage = `
+AI Coding Tracker 状态 (Phase 2.8):
+
+已安装的AI插件 (${this.detectedAIExtensions.length}):
 - ${aiList}
+${fsDetectionInfo}
 
 监控状态: ${this.isMonitoring ? '启用' : '禁用'}
 监控文件夹: ${this.monitoredFolder || '未设置'}
@@ -661,6 +994,11 @@ AI Coding Tracker 状态:
 - 已创建快照: ${snapshotStats.totalSnapshots} 个
 - 监控文件: ${snapshotStats.totalFiles} 个
 - 存储位置: globalStorageUri/snapshots
+
+🔍 扫描设置:
+- AI插件扫描间隔: 1分钟
+- 检测级别: 文件系统级（已安装插件）
+- 支持平台: Windows/macOS/Linux
 		`.trim();
 
 		vscode.window.showInformationMessage(statusMessage, { modal: true });
@@ -669,6 +1007,9 @@ AI Coding Tracker 状态:
 	dispose(): void {
 		// 停止AI插件定时检测
 		this.stopAIScanTimer();
+		
+		// 清理文档保存队列
+		this.documentSaveQueue.clear();
 		
 		this.statusBarItem.dispose();
 		// 释放所有已注册的监听器

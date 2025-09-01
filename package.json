@@ -2,8 +2,13 @@
   "name": "aicodingtracker",
   "displayName": "AI Coding Tracker",
   "description": "Monitor coding behavior and detect AI-assisted programming",
-  "version": "0.0.1",
+  "version": "0.0.3",
   "publisher": "aicodingtracker",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/YusenHou519/AICodingTracker"
+  },
+  "license": "MIT",
   "engines": {
     "vscode": "^1.54.0"
   },
@@ -62,6 +67,16 @@
           "default": 50,
           "description": "Alert threshold for line count increase"
         },
+        "aiCodingTracker.timeThreshold": {
+          "type": "number",
+          "default": 30000,
+          "description": "Time threshold for rapid coding detection in milliseconds (default: 30 seconds)"
+        },
+        "aiCodingTracker.characterThreshold": {
+          "type": "number",
+          "default": 500,
+          "description": "Character threshold for content replacement detection (default: 500 characters)"
+        },
         "aiCodingTracker.enableRealTimeAlert": {
           "type": "boolean",
           "default": true,
@@ -74,8 +89,23 @@
         },
         "aiCodingTracker.aiScanInterval": {
           "type": "number",
-          "default": 60000,
+          "default": 300000,
           "description": "AI plugin scan interval in milliseconds (default: 5 minutes)"
+        },
+        "aiCodingTracker.enableFileSystemScan": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable filesystem-level AI plugin scanning"
+        },
+        "aiCodingTracker.fileSystemScanInterval": {
+          "type": "number",
+          "default": 60000,
+          "description": "Filesystem scan interval in milliseconds (default: 1 minute)"
+        },
+        "aiCodingTracker.includeKeywordDetection": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable keyword-based detection for unknown AI tools"
         }
       }
     }
